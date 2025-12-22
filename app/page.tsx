@@ -1,65 +1,284 @@
-import Image from "next/image";
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+
+type OracleResponse = {
+  text?: string;
+  error?: string;
+  details?: any;
+};
+
+function formatDateJP(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const w = ["日", "月", "火", "水", "木", "金", "土"][d.getDay()];
+  return `${y}.${m}.${day}（${w}）`;
+}
+
+function splitSections(text: string) {
+  const guideMatch = text.match(/【今日の指針】([\s\S]*?)(?=【今日のキーワード】|$)/);
+  const keyMatch = text.match(/【今日のキーワード】([\s\S]*?)(?=【行動のヒント】|$)/);
+  const hintMatch = text.match(/【行動のヒント】([\s\S]*?)$/);
+
+  const guide = (guideMatch?.[1] ?? "").trim();
+  const keyword = (keyMatch?.[1] ?? "").trim();
+  const hintsRaw = (hintMatch?.[1] ?? "").trim();
+
+  const hints = hintsRaw
+    .split("\n")
+    .map((s) => s.replace(/^・\s?/, "").trim())
+    .filter(Boolean);
+
+  return { guide, keyword, hints };
+}
+
+function shimmerLine(seed: number) {
+  // ちょっとだけ“占いっぽさ”を出すための短い一文（固定）
+  const lines = [
+    "今日は「整える」ほど運が味方します。",
+    "小さな選択が、静かに未来を形づくります。",
+    "焦りより、丁寧さが良い流れを呼びます。",
+    "気づきは、日常の中に隠れています。",
+    "いまの自分に優しくするほど、道が開けます。",
+  ];
+  return lines[seed % lines.length];
+}
 
 export default function Home() {
+  const now = useMemo(() => new Date(), []);
+  const dateLabel = useMemo(() => formatDateJP(now), [now]);
+
+  const [raw, setRaw] = useState<string>("");
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string>("");
+  const [revealed, setRevealed] = useState(false);
+
+  const { guide, keyword, hints } = useMemo(() => splitSections(raw), [raw]);
+
+  const daySeed = useMemo(() => {
+    // 日付で毎日変わる“雰囲気”用 seed
+    const y = now.getFullYear();
+    const m = now.getMonth() + 1;
+    const d = now.getDate();
+    return y * 10000 + m * 100 + d;
+  }, [now]);
+
+  const tagline = useMemo(() => shimmerLine(daySeed), [daySeed]);
+
+  useEffect(() => {
+    if (!raw) return;
+    // 生成後にふわっと表示
+    const t = setTimeout(() => setRevealed(true), 30);
+    return () => clearTimeout(t);
+  }, [raw]);
+
+  const fetchOracle = async () => {
+    setLoading(true);
+    setErr("");
+    setRevealed(false);
+    try {
+      const res = await fetch("/api/oracle", { cache: "no-store" });
+      const data: OracleResponse = await res.json();
+
+      if (!res.ok) {
+        setErr(data?.error ?? "エラーが発生しました。");
+        setRaw("");
+        return;
+      }
+
+      setRaw(data.text ?? "");
+    } catch (e: any) {
+      setErr("通信エラーが発生しました。");
+      setRaw("");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const copyText = async () => {
+    if (!raw) return;
+    try {
+      await navigator.clipboard.writeText(raw);
+      alert("コピーしました");
+    } catch {
+      alert("コピーに失敗しました");
+    }
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-indigo-950 to-zinc-950 text-zinc-50">
+      {/* 背景の“星屑”風（軽量） */}
+      <div className="pointer-events-none fixed inset-0 opacity-40">
+        <div className="absolute -top-40 -left-40 h-[520px] w-[520px] rounded-full bg-indigo-500 blur-[120px]" />
+        <div className="absolute top-40 -right-40 h-[520px] w-[520px] rounded-full bg-fuchsia-500 blur-[120px]" />
+        <div className="absolute bottom-[-220px] left-1/3 h-[520px] w-[520px] rounded-full bg-sky-500 blur-[140px]" />
+      </div>
+
+      <div className="relative mx-auto max-w-2xl px-4 py-10">
+        {/* ヘッダー */}
+        <header className="mb-7">
+          <div className="flex items-center justify-between gap-3">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-zinc-200 backdrop-blur">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              AI Oracle
+              <span className="text-white/40">•</span>
+              {dateLabel}
+            </div>
+
+            <button
+              onClick={copyText}
+              disabled={!raw}
+              className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-zinc-200 hover:bg-white/10 disabled:opacity-40 backdrop-blur"
+            >
+              結果をコピー
+            </button>
+          </div>
+
+          <h1 className="mt-4 text-3xl font-semibold tracking-tight">
+            今日のオラクル
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="mt-2 text-sm leading-6 text-zinc-200/80">
+            {tagline}
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+
+          {/* CTA */}
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+            <button
+              onClick={fetchOracle}
+              disabled={loading}
+              className="group relative inline-flex items-center justify-center overflow-hidden rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-zinc-950 shadow-xl shadow-black/30 disabled:opacity-60"
+            >
+              <span className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-gradient-to-r from-indigo-200 via-fuchsia-200 to-sky-200" />
+              <span className="relative">
+                {loading ? "星を読んでいます..." : "今日の指針を受け取る"}
+              </span>
+            </button>
+
+            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs text-zinc-200/80 backdrop-blur">
+              未来を断定せず、行動に落とし込む“やさしい占い”です。
+            </div>
+          </div>
+
+          {err && (
+            <div className="mt-4 rounded-2xl border border-red-300/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+              {err}
+            </div>
+          )}
+        </header>
+
+        {/* コンテンツ */}
+        <section className="space-y-4">
+          {!raw && !err && (
+            <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur">
+              <div className="text-sm text-zinc-200/80">
+                ボタンを押すと、今日のあなたに必要な視点と行動ヒントが届きます。
+              </div>
+              
+              
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+    <div className="text-xs text-white/60">所要時間</div>
+    <div className="mt-1 text-sm font-semibold">約3秒</div>
+  </div>
+
+  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+    <div className="text-xs text-white/60">このオラクルについて</div>
+    <div className="mt-1 text-sm font-semibold leading-6">
+      焦らせず、今日を整えるヒントを届けます
     </div>
+  </div>
+
+  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+    <div className="text-xs text-white/60">使い方</div>
+    <div className="mt-1 text-sm font-semibold leading-6">
+      1日1回、指針を受け取る
+    </div>
+  </div>
+</div>
+
+            </div>
+          )}
+
+          {raw && (
+            <div
+              className={[
+                "space-y-4 transition-all duration-500",
+                revealed ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2",
+              ].join(" ")}
+            >
+              {/* 指針カード */}
+              <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-medium text-zinc-200/70">
+                    【今日の指針】
+                  </div>
+                  <div className="text-[10px] text-zinc-200/50">
+                    free preview
+                  </div>
+                </div>
+
+                <div className="mt-3 whitespace-pre-wrap text-sm leading-7 text-zinc-50">
+                  {guide || raw}
+                </div>
+
+                {/* ここはStripe審査後にリンク差し替え */}
+               <div className="mt-4 rounded-xl border border-white/10 bg-black/30 p-4">
+  <p className="text-sm font-medium text-white">
+    この先は、今日をもう一段深く整える内容です
+  </p>
+
+  <p className="mt-1 text-xs text-white/60">
+    ※ プレミアムで全文を読むには、サブスクリプション登録が必要です
+  </p>
+</div>
+
+              </div>
+
+              {/* キーワード & ヒント */}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur">
+                  <div className="text-xs font-medium text-zinc-200/70">
+                    【今日のキーワード】
+                  </div>
+                  <div className="mt-3 inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                    <span className="text-xl font-semibold">{keyword || "—"}</span>
+                    <span className="text-xs text-zinc-200/60">keyword</span>
+                  </div>
+                </div>
+
+                <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur">
+                  <div className="text-xs font-medium text-zinc-200/70">
+                    【行動のヒント】
+                  </div>
+                  <ul className="mt-4 space-y-3 text-sm leading-6 text-zinc-50">
+                    {(hints.length ? hints : ["—"]).map((h, i) => (
+                      <li key={i} className="flex gap-3">
+                        <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-white/70" />
+                        <span>{h}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              {/* 原文（開発中だけ） */}
+              <details className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur">
+                <summary className="cursor-pointer text-sm font-medium text-zinc-100">
+                  生成テキスト（原文）を表示
+                </summary>
+                <pre className="mt-4 whitespace-pre-wrap break-words text-xs leading-6 text-zinc-200/80">
+                  {raw}
+                </pre>
+              </details>
+            </div>
+          )}
+        </section>
+
+        <footer className="mt-10 text-xs text-zinc-200/60">
+          ※ 医療・法律・投資の判断は行いません。必要なら専門家への相談も検討してください。
+        </footer>
+      </div>
+    </main>
   );
 }
