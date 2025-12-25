@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 
 import { useEffect, useMemo, useState } from "react";
 
@@ -34,7 +35,6 @@ function splitSections(text: string) {
 }
 
 function shimmerLine(seed: number) {
-  // ちょっとだけ“占いっぽさ”を出すための短い一文（固定）
   const lines = [
     "今日は「整える」ほど運が味方します。",
     "小さな選択が、静かに未来を形づくります。",
@@ -57,7 +57,6 @@ export default function Home() {
   const { guide, keyword, hints } = useMemo(() => splitSections(raw), [raw]);
 
   const daySeed = useMemo(() => {
-    // 日付で毎日変わる“雰囲気”用 seed
     const y = now.getFullYear();
     const m = now.getMonth() + 1;
     const d = now.getDate();
@@ -66,9 +65,15 @@ export default function Home() {
 
   const tagline = useMemo(() => shimmerLine(daySeed), [daySeed]);
 
+  // ✅ 本番では原文を出さない（必要なら Vercelの環境変数で ON）
+  // Vercel: NEXT_PUBLIC_SHOW_RAW=1 を入れると表示される
+  const showRaw = useMemo(
+    () => process.env.NEXT_PUBLIC_SHOW_RAW === "1",
+    []
+  );
+
   useEffect(() => {
     if (!raw) return;
-    // 生成後にふわっと表示
     const t = setTimeout(() => setRevealed(true), 30);
     return () => clearTimeout(t);
   }, [raw]);
@@ -109,6 +114,21 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-indigo-950 to-zinc-950 text-zinc-50">
       {/* 背景の“星屑”風（軽量） */}
+      {/* 背景画像（雰囲気だけ） */}
+      <div className="relative min-h-screen ...">
+
+<div className="pointer-events-none absolute inset-0 -z-10">
+  <Image
+    src="/oracle-bg.png"
+    alt=""
+    fill
+    priority
+    className="object-cover opacity-25 blur-[1px]"
+  />
+  {/* 読みやすさ用の暗幕（既存背景に馴染ませる） */}
+  <div className="absolute inset-0 bg-black/50" />
+</div>
+
       <div className="pointer-events-none fixed inset-0 opacity-40">
         <div className="absolute -top-40 -left-40 h-[520px] w-[520px] rounded-full bg-indigo-500 blur-[120px]" />
         <div className="absolute top-40 -right-40 h-[520px] w-[520px] rounded-full bg-fuchsia-500 blur-[120px]" />
@@ -138,9 +158,7 @@ export default function Home() {
           <h1 className="mt-4 text-3xl font-semibold tracking-tight">
             今日のオラクル
           </h1>
-          <p className="mt-2 text-sm leading-6 text-zinc-200/80">
-            {tagline}
-          </p>
+          <p className="mt-2 text-sm leading-6 text-zinc-200/80">{tagline}</p>
 
           {/* CTA */}
           <div className="mt-5 flex flex-col gap-3 sm:flex-row">
@@ -174,29 +192,27 @@ export default function Home() {
               <div className="text-sm text-zinc-200/80">
                 ボタンを押すと、今日のあなたに必要な視点と行動ヒントが届きます。
               </div>
-              
-              
+
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
-  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-    <div className="text-xs text-white/60">所要時間</div>
-    <div className="mt-1 text-sm font-semibold">約3秒</div>
-  </div>
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="text-xs text-white/60">所要時間</div>
+                  <div className="mt-1 text-sm font-semibold">約3秒</div>
+                </div>
 
-  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-    <div className="text-xs text-white/60">このオラクルについて</div>
-    <div className="mt-1 text-sm font-semibold leading-6">
-      焦らせず、今日を整えるヒントを届けます
-    </div>
-  </div>
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="text-xs text-white/60">このオラクルについて</div>
+                  <div className="mt-1 text-sm font-semibold leading-6">
+                    焦らせず、今日を整えるヒントを届けます
+                  </div>
+                </div>
 
-  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-    <div className="text-xs text-white/60">使い方</div>
-    <div className="mt-1 text-sm font-semibold leading-6">
-      1日1回、指針を受け取る
-    </div>
-  </div>
-</div>
-
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="text-xs text-white/60">使い方</div>
+                  <div className="mt-1 text-sm font-semibold leading-6">
+                    1日1回、指針を受け取る
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
@@ -207,33 +223,38 @@ export default function Home() {
                 revealed ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2",
               ].join(" ")}
             >
-              {/* 指針カード */}
-              <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur">
-                <div className="flex items-center justify-between">
-                  <div className="text-xs font-medium text-zinc-200/70">
-                    【今日の指針】
-                  </div>
-                  <div className="text-[10px] text-zinc-200/50">
-                    free preview
-                  </div>
-                </div>
+            {/* 指針カード */}
+<div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur">
+  <div className="flex items-center justify-between">
+    <div className="text-xs font-medium text-zinc-200/70">【今日の指針】</div>
+    <div className="text-[10px] text-zinc-200/50">free preview</div>
+  </div>
 
-                <div className="mt-3 whitespace-pre-wrap text-sm leading-7 text-zinc-50">
-                  {guide || raw}
-                </div>
+  <div className="mt-3 whitespace-pre-wrap text-sm leading-7 text-zinc-50">
+    {guide || raw}
+  </div>
 
-                {/* ここはStripe審査後にリンク差し替え */}
-               <div className="mt-4 rounded-xl border border-white/10 bg-black/30 p-4">
-  <p className="text-sm font-medium text-white">
-    この先は、今日をもう一段深く整える内容です
-  </p>
+  {/* ✅ プレミアム誘導（カード丸ごとクリック可能） */}
+  <a
+    href="https://buy.stripe.com/5kQdR93jB3Mj4ZS7ZC7AI01"
+    target="_blank"
+    rel="noopener noreferrer"
+    aria-label="プレミアムで全文を読む（Stripeへ）"
+    className="group mt-4 block rounded-3xl border border-white/15 bg-gradient-to-br from-indigo-500/20 to-purple-500/20 p-5 text-center transition hover:scale-[1.01] hover:border-white/25 hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/40"
+  >
+    <p className="mb-3 text-sm text-white/85">
+      この先は、今日をもう一段深く整える内容です
+    </p>
 
-  <p className="mt-1 text-xs text-white/60">
-    ※ プレミアムで全文を読むには、サブスクリプション登録が必要です
-  </p>
+    <span className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-6 py-3 text-base font-semibold text-black shadow-lg transition group-hover:scale-[1.02]">
+      🔓 プレミアムで今日のオラクル全文を読む
+    </span>
+
+    <p className="mt-2 text-xs text-white/60">
+      月額 ¥980｜毎日のオラクル全文が読み放題
+    </p>
+  </a>
 </div>
-
-              </div>
 
               {/* キーワード & ヒント */}
               <div className="grid gap-4 sm:grid-cols-2">
@@ -262,15 +283,17 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* 原文（開発中だけ） */}
-              <details className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur">
-                <summary className="cursor-pointer text-sm font-medium text-zinc-100">
-                  生成テキスト（原文）を表示
-                </summary>
-                <pre className="mt-4 whitespace-pre-wrap break-words text-xs leading-6 text-zinc-200/80">
-                  {raw}
-                </pre>
-              </details>
+              {/* ✅ 原文表示：開発中だけ */}
+              {showRaw && (
+                <details className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur">
+                  <summary className="cursor-pointer text-sm font-medium text-zinc-100">
+                    生成テキスト（原文）を表示（開発用）
+                  </summary>
+                  <pre className="mt-4 whitespace-pre-wrap break-words text-xs leading-6 text-zinc-200/80">
+                    {raw}
+                  </pre>
+                </details>
+              )}
             </div>
           )}
         </section>
