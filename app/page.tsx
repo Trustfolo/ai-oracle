@@ -112,17 +112,18 @@ export default function Home() {
 
   return (
     <main className="relative min-h-screen bg-gradient-to-b from-zinc-950 via-indigo-950 to-zinc-950 text-zinc-50">
-      {/* 背景画像（public/oracle-bg.png） */}
-      <div className="pointer-events-none absolute inset-0 -z-10">
-        <Image
-          src="/oracle-bg.png"
-          alt=""
-          fill
-          priority
-          className="object-cover opacity-25 blur-[1px]"
-        />
-        <div className="absolute inset-0 bg-black/50" />
-      </div>
+   {/* 背景画像（public/oracle-bg.png） */}
+<div className="pointer-events-none absolute inset-0 z-0">
+  <Image
+    src="/oracle-bg.png"
+    alt=""
+    fill
+    priority
+    className="object-cover opacity-40"
+  />
+  <div className="absolute inset-0 bg-black/50" />
+</div>
+
 
       {/* 光のぼかし */}
       <div className="pointer-events-none fixed inset-0 opacity-40">
@@ -132,7 +133,7 @@ export default function Home() {
       </div>
 
       {/* 画面本体 */}
-      <div className="relative mx-auto max-w-2xl px-4 py-10">
+<div className="relative z-10 mx-auto max-w-2xl px-4 py-10">
         {/* ヘッダー */}
         <header className="mb-7">
           <div className="flex items-center justify-between gap-3">
