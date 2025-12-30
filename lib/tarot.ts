@@ -1,7 +1,7 @@
 // lib/tarot.ts
 
 export type TarotCard = {
-  slug: string;
+  slug: string;       // ← key（画像解決に使う）
   nameJa: string;
   reversed: boolean;
   imageUrl: string;
@@ -36,7 +36,7 @@ export const TAROT_IMAGES: Record<string, string> = {
 
 /* ========= 大アルカナ定義 ========= */
 
-const TAROT_CARDS = [
+const TAROT_CARDS: Array<{ slug: keyof typeof TAROT_IMAGES; nameJa: string }> = [
   { slug: "fool", nameJa: "愚者" },
   { slug: "magician", nameJa: "魔術師" },
   { slug: "high_priestess", nameJa: "女教皇" },
@@ -66,10 +66,13 @@ const TAROT_CARDS = [
 export function pickTarotCards(n: number): TarotCard[] {
   const shuffled = [...TAROT_CARDS].sort(() => Math.random() - 0.5);
 
-  return shuffled.slice(0, n).map((card) => ({
-    slug: card.slug,
-    nameJa: card.nameJa,
-    reversed: Math.random() < 0.5,
-    imageUrl: TAROT_IMAGES[card.slug],
-  }));
+  return shuffled.slice(0, n).map((card) => {
+    const imageUrl = TAROT_IMAGES[card.slug];
+    return {
+      slug: card.slug,
+      nameJa: card.nameJa,
+      reversed: Math.random() < 0.5,
+      imageUrl: imageUrl ?? "",
+    };
+  });
 }

@@ -49,7 +49,7 @@ type Tier = "free" | "premium";
 
 function tarotPrompt(
   today: string,
-  tier: Tier,
+  _tier: Tier,
   drawn: ReturnType<typeof pickTarotCards>,
   q?: string
 ) {
@@ -62,6 +62,9 @@ function tarotPrompt(
   return `
 あなたは「AIタロット」です。
 今日は ${today} です。
+
+ユーザーの問い：
+「${q || "（質問は未入力）"}」
 
 【引いたカード】
 ${line(0, "過去")}
@@ -89,7 +92,7 @@ export async function GET(request: Request) {
   const today = todayISO();
 
   let prompt = "";
-  let drawn = null;
+  let drawn: ReturnType<typeof pickTarotCards> | null = null;
 
   if (safeProduct === "tarot") {
     drawn = pickTarotCards(3);
@@ -131,10 +134,11 @@ export async function GET(request: Request) {
         ? drawn.map((c, i) => ({
             index: i,
             role: i === 0 ? "過去" : i === 1 ? "現在" : "助言",
+            slug: c.slug, // ★ 追加：将来拡張に効く
             nameJa: c.nameJa,
             position: c.reversed ? "逆位置" : "正位置",
-            reversed: c.reversed,
-            imageUrl: c.imageUrl, // ★ ここがポイント
+            reversed: Boolean(c.reversed),
+            imageUrl: c.imageUrl, // ★ 画像
           }))
         : null,
   });
