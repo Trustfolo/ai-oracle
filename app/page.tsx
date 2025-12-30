@@ -1,12 +1,16 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { GENRES } from "@/lib/genres";
 
 type OracleResponse = {
   text?: string;
   error?: string;
-  details?: any;
+  detail?: string;
+  product?: string;
+  tier?: "free" | "premium";
 };
 
 function formatDateJP(d: Date) {
@@ -19,21 +23,27 @@ function formatDateJP(d: Date) {
 
 function splitSections(text: string) {
   const guideMatch = text.match(
-    /【今日の指針】([\s\S]*?)(?=【今日のキーワード】|【行動のヒント】|$)/
+    /【今日の指針】([\s\S]*?)(?=【今日のキーワード】|【行動のヒント】|【ひとことメッセージ】|$)/
   );
-  const keyMatch = text.match(/【今日のキーワード】([\s\S]*?)(?=【行動のヒント】|$)/);
-  const hintMatch = text.match(/【行動のヒント】([\s\S]*?)$/);
+  const keyMatch = text.match(
+    /【今日のキーワード】([\s\S]*?)(?=【行動のヒント】|【ひとことメッセージ】|$)/
+  );
+  const hintMatch = text.match(
+    /【行動のヒント】([\s\S]*?)(?=【ひとことメッセージ】|$)/
+  );
+  const msgMatch = text.match(/【ひとことメッセージ】([\s\S]*?)$/);
 
   const guide = (guideMatch?.[1] ?? "").trim();
   const keyword = (keyMatch?.[1] ?? "").trim();
   const hintsRaw = (hintMatch?.[1] ?? "").trim();
+  const message = (msgMatch?.[1] ?? "").trim();
 
   const hints = hintsRaw
     .split("\n")
     .map((s) => s.replace(/^・\s?/, "").trim())
     .filter(Boolean);
 
-  return { guide, keyword, hints };
+  return { guide, keyword, hints, message };
 }
 
 function shimmerLine(seed: number) {
@@ -52,11 +62,15 @@ export default function Home() {
   const dateLabel = useMemo(() => formatDateJP(now), [now]);
 
   const [raw, setRaw] = useState<string>("");
+  const [tier, setTier] = useState<"free" | "premium">("free");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string>("");
   const [revealed, setRevealed] = useState(false);
 
-  const { guide, keyword, hints } = useMemo(() => splitSections(raw), [raw]);
+  const { guide, keyword, hints, message } = useMemo(
+    () => splitSections(raw),
+    [raw]
+  );
 
   const daySeed = useMemo(() => {
     const y = now.getFullYear();
@@ -68,8 +82,19 @@ export default function Home() {
   const tagline = useMemo(() => shimmerLine(daySeed), [daySeed]);
 
   // 本番では原文を出さない（必要なら Vercelの環境変数で ON）
-  // Vercel: NEXT_PUBLIC_SHOW_RAW=1 を入れると表示される
+  // Vercel: NEXT_PUBLIC_SHOW_RAW=1
   const showRaw = useMemo(() => process.env.NEXT_PUBLIC_SHOW_RAW === "1", []);
+
+  // ジャンル検索
+  const [q, setQ] = useState("");
+  const filteredGenres = useMemo(() => {
+    const query = q.trim().toLowerCase();
+    if (!query) return GENRES;
+    return GENRES.filter((g) => {
+      const t = `${g.slug} ${g.title} ${g.description}`.toLowerCase();
+      return t.includes(query);
+    });
+  }, [q]);
 
   useEffect(() => {
     if (!raw) return;
@@ -77,12 +102,23 @@ export default function Home() {
     return () => clearTimeout(t);
   }, [raw]);
 
-  const fetchOracle = async () => {
+  const fetchOracle = async (t: "free" | "premium") => {
+    setTier(t);
     setLoading(true);
     setErr("");
     setRevealed(false);
+
     try {
-      const res = await fetch("/api/oracle", { cache: "no-store" });
+      // ★重要：mode ではなく product/tier で統一（Premium復活）
+      const qs = new URLSearchParams({
+        product: "oracle",
+        tier: t,
+      });
+
+      const res = await fetch(`/api/oracle?${qs.toString()}`, {
+        cache: "no-store",
+      });
+
       const data: OracleResponse = await res.json();
 
       if (!res.ok) {
@@ -112,18 +148,17 @@ export default function Home() {
 
   return (
     <main className="relative min-h-screen bg-gradient-to-b from-zinc-950 via-indigo-950 to-zinc-950 text-zinc-50">
-   {/* 背景画像（public/oracle-bg.png） */}
-<div className="pointer-events-none absolute inset-0 z-0">
-  <Image
-    src="/oracle-bg.png"
-    alt=""
-    fill
-    priority
-    className="object-cover opacity-40"
-  />
-  <div className="absolute inset-0 bg-black/50" />
-</div>
-
+      {/* 背景画像 */}
+      <div className="pointer-events-none absolute inset-0 z-0">
+        <Image
+          src="/oracle-bg.png"
+          alt=""
+          fill
+          priority
+          className="object-cover opacity-40"
+        />
+        <div className="absolute inset-0 bg-black/50" />
+      </div>
 
       {/* 光のぼかし */}
       <div className="pointer-events-none fixed inset-0 opacity-40">
@@ -132,14 +167,13 @@ export default function Home() {
         <div className="absolute bottom-[-220px] left-1/3 h-[520px] w-[520px] rounded-full bg-sky-500 blur-[140px]" />
       </div>
 
-      {/* 画面本体 */}
-<div className="relative z-10 mx-auto max-w-2xl px-4 py-10">
+      <div className="relative z-10 mx-auto max-w-2xl px-4 py-10">
         {/* ヘッダー */}
         <header className="mb-7">
           <div className="flex items-center justify-between gap-3">
             <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-zinc-200 backdrop-blur">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              AI Oracle
+              AI Oracle Hub
               <span className="text-white/40">•</span>
               {dateLabel}
             </div>
@@ -153,23 +187,36 @@ export default function Home() {
             </button>
           </div>
 
-          <h1 className="mt-4 text-3xl font-semibold tracking-tight">今日のオラクル</h1>
+          <h1 className="mt-4 text-3xl font-semibold tracking-tight">
+            今日のオラクル
+          </h1>
           <p className="mt-2 text-sm leading-6 text-zinc-200/80">{tagline}</p>
 
-          {/* CTA */}
+          {/* CTA（無料 + Premium復活） */}
           <div className="mt-5 flex flex-col gap-3 sm:flex-row">
             <button
-              onClick={fetchOracle}
+              onClick={() => fetchOracle("free")}
               disabled={loading}
               className="group relative inline-flex items-center justify-center overflow-hidden rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-zinc-950 shadow-xl shadow-black/30 disabled:opacity-60"
             >
               <span className="absolute inset-0 opacity-0 transition-opacity group-hover:opacity-100 bg-gradient-to-r from-indigo-200 via-fuchsia-200 to-sky-200" />
-              <span className="relative">{loading ? "星を読んでいます..." : "今日の指針を受け取る"}</span>
+              <span className="relative">
+                {loading && tier === "free"
+                  ? "星を読んでいます..."
+                  : "今日の指針を受け取る（無料）"}
+              </span>
             </button>
 
-            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs text-zinc-200/80 backdrop-blur">
-              未来を断定せず、行動に落とし込む“やさしい占い”です。
-            </div>
+            <button
+              onClick={() => fetchOracle("premium")}
+              disabled={loading}
+              className="rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-zinc-100 hover:bg-white/10 disabled:opacity-60 backdrop-blur"
+              title="Stripe審査中は“Premiumの出力例”として動かします（後で課金連動）"
+            >
+              {loading && tier === "premium"
+                ? "深掘り中..."
+                : "深掘り（Premiumの出力例）"}
+            </button>
           </div>
 
           {err && (
@@ -179,31 +226,12 @@ export default function Home() {
           )}
         </header>
 
-        {/* コンテンツ */}
+        {/* 結果 */}
         <section className="space-y-4">
           {!raw && !err && (
             <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur">
               <div className="text-sm text-zinc-200/80">
-                ボタンを押すと、今日のあなたに必要な視点と行動ヒントが届きます。
-              </div>
-
-              <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <div className="text-xs text-white/60">所要時間</div>
-                  <div className="mt-1 text-sm font-semibold">約3秒</div>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <div className="text-xs text-white/60">このオラクルについて</div>
-                  <div className="mt-1 text-sm font-semibold leading-6">
-                    焦らせず、今日を整えるヒントを届けます
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <div className="text-xs text-white/60">使い方</div>
-                  <div className="mt-1 text-sm font-semibold leading-6">1日1回、指針を受け取る</div>
-                </div>
+                入口は総合オラクル。必要ならジャンルに分岐してください。
               </div>
             </div>
           )}
@@ -215,59 +243,55 @@ export default function Home() {
                 revealed ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2",
               ].join(" ")}
             >
-              {/* 指針カード */}
               <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur">
                 <div className="flex items-center justify-between">
-                  <div className="text-xs font-medium text-zinc-200/70">【今日の指針】</div>
-                  <div className="text-[10px] text-zinc-200/50">free preview</div>
+                  <div className="text-xs font-medium text-zinc-200/70">
+                    【今日の指針】
+                  </div>
+                  <div className="text-[10px] text-zinc-200/50">{tier}</div>
                 </div>
 
                 <div className="mt-3 whitespace-pre-wrap text-sm leading-7 text-zinc-50">
                   {guide || raw}
                 </div>
 
-                {/* ✅ プレミアム誘導（カード丸ごとクリック可能） */}
-                <a
-                  href="https://buy.stripe.com/5kQdR93jB3Mj4ZS7ZC7AI01"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="プレミアムで全文を読む（Stripeへ）"
-                  className="group mt-4 block rounded-3xl border border-white/15 bg-gradient-to-br from-indigo-500/20 to-purple-500/20 p-5 text-center transition hover:scale-[1.01] hover:border-white/25 hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/40"
-                >
-                  <p className="mb-3 text-sm text-white/85">この先は、今日をもう一段深く整える内容です</p>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <div className="text-xs font-medium text-zinc-200/70">
+                      【今日のキーワード】
+                    </div>
+                    <div className="mt-2 text-lg font-semibold">
+                      {keyword || "—"}
+                    </div>
+                  </div>
 
-                  <span className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-6 py-3 text-base font-semibold text-black shadow-lg transition group-hover:scale-[1.02]">
-                    🔓 プレミアムで今日のオラクル全文を読む
-                  </span>
-
-                  <p className="mt-2 text-xs text-white/60">月額 ¥980｜毎日のオラクル全文が読み放題</p>
-                </a>
-              </div>
-
-              {/* キーワード & ヒント */}
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur">
-                  <div className="text-xs font-medium text-zinc-200/70">【今日のキーワード】</div>
-                  <div className="mt-3 inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-                    <span className="text-xl font-semibold">{keyword || "—"}</span>
-                    <span className="text-xs text-zinc-200/60">keyword</span>
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <div className="text-xs font-medium text-zinc-200/70">
+                      【行動のヒント】
+                    </div>
+                    <ul className="mt-2 space-y-2 text-sm leading-6 text-zinc-50">
+                      {(hints.length ? hints : ["—"]).map((h, i) => (
+                        <li key={i} className="flex gap-3">
+                          <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-white/70" />
+                          <span>{h}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 </div>
 
-                <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur">
-                  <div className="text-xs font-medium text-zinc-200/70">【行動のヒント】</div>
-                  <ul className="mt-4 space-y-3 text-sm leading-6 text-zinc-50">
-                    {(hints.length ? hints : ["—"]).map((h, i) => (
-                      <li key={i} className="flex gap-3">
-                        <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-white/70" />
-                        <span>{h}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                {message && (
+                  <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <div className="text-xs font-medium text-zinc-200/70">
+                      【ひとことメッセージ】
+                    </div>
+                    <div className="mt-2 whitespace-pre-wrap text-sm leading-7 text-zinc-50">
+                      {message}
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {/* 原文表示：開発用だけ（本番は環境変数でOFF） */}
               {showRaw && (
                 <details className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur">
                   <summary className="cursor-pointer text-sm font-medium text-zinc-100">
@@ -282,8 +306,67 @@ export default function Home() {
           )}
         </section>
 
-        <footer className="mt-10 text-xs text-zinc-200/60">
-          ※ 医療・法律・投資の判断は行いません。必要なら専門家への相談も検討してください。
+        {/* ジャンル */}
+        <section className="mt-10">
+          <div className="mb-3 flex items-end justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">ジャンルから選ぶ</h2>
+              <p className="mt-1 text-xs text-zinc-200/70">
+                UIは共通。中身（プロンプト/課金）をジャンルごとに差し替えます。
+              </p>
+            </div>
+
+            <div className="w-[160px]">
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="検索"
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-zinc-100 placeholder:text-zinc-200/40 backdrop-blur outline-none focus:border-white/20"
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            {filteredGenres.map((g) => (
+              <Link
+                key={g.slug}
+                href={`/g/${g.slug}`}
+                className="group block rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur transition hover:border-white/20 hover:bg-white/10"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-base font-semibold">{g.title}</div>
+                    <div className="mt-1 text-xs leading-5 text-zinc-200/70">
+                      {g.description}
+                    </div>
+                  </div>
+
+                  <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-[10px] text-zinc-200/70">
+                    {g.badge ?? "soon"}
+                  </span>
+                </div>
+
+                <div className="mt-4 text-xs text-zinc-200/60 group-hover:text-zinc-200/80">
+                  → 開く
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        <footer className="mt-10 space-y-2 text-xs text-zinc-200/60">
+          <p>
+            ※ 医療・法律・投資の判断は行いません。必要に応じて専門家への相談もご検討ください。
+          </p>
+
+          <p>
+            <a
+              href="/tokusho"
+              className="underline underline-offset-2 hover:text-zinc-200"
+            >
+              特定商取引法に基づく表記
+            </a>
+          </p>
         </footer>
       </div>
     </main>

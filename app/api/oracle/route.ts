@@ -1,83 +1,102 @@
+// app/api/oracle/route.ts
+
 import { NextResponse } from "next/server";
+import { GENRE_MAP } from "../../../lib/genres";
+import { pickTarotCards } from "../../../lib/tarot";
+
+/* ========= utility ========= */
+
+function normalize(input: unknown) {
+  const raw = String(input ?? "");
+  try {
+    return decodeURIComponent(raw).trim().toLowerCase();
+  } catch {
+    return raw.trim().toLowerCase();
+  }
+}
+
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/* ========= 共通ルール ========= */
+
+function baseRules() {
+  return `
+以下のルールを必ず守ってください。
+・未来を断定しない
+・恐怖や不安を煽らない
+・医療・法律・投資の判断をしない
+・占いは「思考と行動の整理」に使う
+・第三者を操作・支配する助言をしない
+`;
+}
+
+/* ========= FREE ========= */
+
+function commonFree(today: string) {
+  return `
+あなたは「AIオラクル（無料）」です。
+今日は ${today} です。
+
+${baseRules()}
+`;
+}
+
+/* ========= TAROT ========= */
+
+type Tier = "free" | "premium";
+
+function tarotPrompt(
+  today: string,
+  tier: Tier,
+  drawn: ReturnType<typeof pickTarotCards>,
+  q?: string
+) {
+  const line = (i: number, role: string) => {
+    const c = drawn[i];
+    const pos = c.reversed ? "逆位置" : "正位置";
+    return `${i + 1}) ${role}：${c.nameJa}（${pos}）`;
+  };
+
+  return `
+あなたは「AIタロット」です。
+今日は ${today} です。
+
+【引いたカード】
+${line(0, "過去")}
+${line(1, "現在")}
+${line(2, "助言")}
+
+${baseRules()}
+`;
+}
+
+/* ========= main ========= */
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const mode = searchParams.get("mode") ?? "free"; // 将来用（今は free 固定）
 
-  const today = new Date().toISOString().slice(0, 10);
+  const productRaw = searchParams.get("product") ?? "oracle";
+  const tierRaw = searchParams.get("tier") ?? "free";
+  const qRaw = searchParams.get("q") ?? "";
 
-  /* =========================
-     プロンプト定義
-     ========================= */
+  const product = normalize(productRaw);
+  const tier = normalize(tierRaw) === "premium" ? "premium" : "free";
+  const q = qRaw.trim();
 
-  // 【B】無料用プロンプト（短く・強く）
-  const FREE_PROMPT = `
-あなたは「AIオラクル」です。
+  const safeProduct = GENRE_MAP[product] ? product : "oracle";
+  const today = todayISO();
 
-今日は ${today} です。
+  let prompt = "";
+  let drawn = null;
 
-今日は日付に基づき、
-その人の思考や行動を静かに整える
-「今日の指針」だけを伝えてください。
-
-以下のルールを厳守してください。
-・未来を断定しない
-・恐怖や不安を煽らない
-・医療・法律・投資の判断をしない
-
-出力形式は必ず以下のみ：
-
-【今日の指針】
-（3〜5行。短く、余韻を残す）
-
-【今日のキーワード】
-（1語）
-
-文章は、
-読み終わったあとに「少し整う」感覚を残すトーンで。
-`;
-
-  // 【A】プレミアム用プロンプト（※今は未使用）
-  const PREMIUM_PROMPT = `
-あなたは「AIオラクル（Oracle）」です。
-
-今日は ${today} です。
-
-今日は日付に基づき、
-このユーザーが「今日をどう過ごすと整うか」を
-深く、具体的に伝えてください。
-
-ルール：
-・未来を断定しない
-・恐怖や不安を煽らない
-・医療・法律・投資の判断をしない
-・占いではなく「思考と行動の整理」に徹する
-
-出力構成：
-
-【今日の指針】
-・なぜ今日はこういう日かの背景
-・内面への問いかけ
-
-【今日のキーワード】
-・1語（漢字 or ひらがな）
-
-【行動のヒント】
-・今日できる具体的な行動を3つ
-・5分〜30分でできるもの
-
-【ひとことメッセージ】
-・今日を終えるときに思い出してほしい言葉
-
-文章は、
-静かで誠実、知的で押しつけがましくないトーンで。
-`;
-
-  const prompt = mode === "premium" ? PREMIUM_PROMPT : FREE_PROMPT;
-
-  /* =========================
-     OpenAI 呼び出し
-     ========================= */
+  if (safeProduct === "tarot") {
+    drawn = pickTarotCards(3);
+    prompt = tarotPrompt(today, tier, drawn, q);
+  } else {
+    prompt = commonFree(today);
+  }
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -87,28 +106,36 @@ export async function GET(request: Request) {
     );
   }
 
-  try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.9,
-      }),
-    });
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      temperature: safeProduct === "tarot" ? 0.7 : 0.9,
+    }),
+  });
 
-    const json = await response.json();
-    const text = json.choices?.[0]?.message?.content;
+  const json = await res.json();
+  const text = json.choices?.[0]?.message?.content ?? "";
 
-    return NextResponse.json({ text, mode });
-  } catch (e: any) {
-    return NextResponse.json(
-      { error: "OpenAI API error", detail: String(e) },
-      { status: 500 }
-    );
-  }
+  return NextResponse.json({
+    text,
+    product: safeProduct,
+    tier,
+    drawnCards:
+      safeProduct === "tarot" && drawn
+        ? drawn.map((c, i) => ({
+            index: i,
+            role: i === 0 ? "過去" : i === 1 ? "現在" : "助言",
+            nameJa: c.nameJa,
+            position: c.reversed ? "逆位置" : "正位置",
+            reversed: c.reversed,
+            imageUrl: c.imageUrl, // ★ ここがポイント
+          }))
+        : null,
+  });
 }
