@@ -2,31 +2,28 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { GENRES, GENRE_MAP } from "../../../lib/genres";
 import type { Genre } from "../../../lib/genres";
 
-/* ---------- 型 ---------- */
+type DrawnCard = {
+  index: number;
+  role: string;
+  slug?: string;
+  nameJa: string;
+  position: string;
+  reversed: boolean;
+  imageUrl?: string;
+};
 
 type ApiResponse = {
   text?: string;
-  error?: string;
-  detail?: string;
   product?: string;
   tier?: "free" | "premium";
+  drawnCards?: DrawnCard[] | null;
+  error?: string;
+  detail?: string;
 };
 
 type Section = { title: string; body: string };
-
-/* ---------- util ---------- */
-
-function normalize(input: unknown) {
-  const raw = String(input ?? "");
-  try {
-    return decodeURIComponent(raw).trim().toLowerCase();
-  } catch {
-    return raw.trim().toLowerCase();
-  }
-}
 
 function parseBracketSections(text: string): Section[] {
   const src = (text ?? "").trim();
@@ -53,31 +50,51 @@ function splitHints(body: string): string[] {
     .filter(Boolean);
 }
 
-/* ---------- main ---------- */
-
-export default function GenreClient({ slug }: { slug: string }) {
-  const normalized = normalize(slug);
-
-  const genre: Genre | null =
-    GENRE_MAP[normalized] ??
-    GENRES.find((g) => g.slug.toLowerCase() === normalized) ??
-    null;
+export default function GenreClient({
+  slug,
+  genre,
+}: {
+  slug: string;
+  genre: Genre | null;
+}) {
+  if (!genre) {
+    return (
+      <main className="mx-auto max-w-2xl px-4 py-12">
+        <p className="text-sm">ページが見つかりません。</p>
+        <p className="mt-2 text-xs text-zinc-500">
+          slug: <span className="font-mono">{slug}</span>
+        </p>
+        <div className="mt-4">
+          <Link href="/" className="underline underline-offset-4 text-sm">
+            ← トップに戻る
+          </Link>
+        </div>
+      </main>
+    );
+  }
 
   const [tier, setTier] = useState<"free" | "premium">("free");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [raw, setRaw] = useState("");
 
+  const [cards, setCards] = useState<DrawnCard[] | null>(null);
+  const [zoom, setZoom] = useState<DrawnCard | null>(null);
+
   const sections = useMemo(() => parseBracketSections(raw), [raw]);
+
+  const isTarot = genre.slug === "tarot";
 
   const fetchOracle = async (t: "free" | "premium") => {
     setTier(t);
     setLoading(true);
     setErr("");
+    setRaw("");
+    setCards(null);
 
     try {
       const qs = new URLSearchParams({
-        product: normalized,
+        product: genre.slug, // ←絶対これ（tarotを返すため）
         tier: t,
       });
 
@@ -89,51 +106,49 @@ export default function GenreClient({ slug }: { slug: string }) {
 
       if (!res.ok) {
         setErr(data?.error ?? "エラーが発生しました。");
-        setRaw("");
         return;
       }
 
       setRaw(data.text ?? "");
+      setCards(data.drawnCards ?? null); // ←ここで受け取る
     } catch {
       setErr("通信エラーが発生しました。");
-      setRaw("");
     } finally {
       setLoading(false);
     }
   };
 
-  if (!genre) {
-    return (
-      <main className="mx-auto max-w-2xl px-4 py-12">
-        <p className="text-sm">ページが見つかりません。</p>
-        <p className="mt-2 text-xs text-zinc-500">
-          slug: <span className="font-mono">{normalized}</span>
-        </p>
-        <div className="mt-4">
-          <Link href="/" className="underline underline-offset-4 text-sm">
-            ← トップに戻る
-          </Link>
-        </div>
-      </main>
-    );
-  }
+  const copyText = async () => {
+    if (!raw) return;
+    try {
+      await navigator.clipboard.writeText(raw);
+      alert("コピーしました");
+    } catch {
+      alert("コピーに失敗しました");
+    }
+  };
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-10">
-      {/* 上部だけ世界観（白背景でも占い感が出る） */}
-      <div className="pointer-events-none fixed inset-x-0 top-0 h-56 bg-gradient-to-b from-indigo-200/60 via-purple-200/30 to-transparent" />
-      <div className="relative space-y-6">
-        {/* header */}
-        <header className="space-y-3 text-center">
-          <Link href="/" className="text-xs underline underline-offset-4">
+    <main className="mx-auto max-w-3xl px-4 py-10">
+      <header className="mb-6 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <Link href="/" className="text-sm underline underline-offset-4">
             ← トップに戻る
           </Link>
-          <h1 className="text-2xl font-semibold">{genre.title}</h1>
-          <p className="text-sm text-zinc-600">{genre.description}</p>
-        </header>
 
-        {/* buttons */}
-        <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+          <button
+            onClick={copyText}
+            disabled={!raw}
+            className="rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-40"
+          >
+            結果をコピー
+          </button>
+        </div>
+
+        <h1 className="text-2xl font-semibold">{genre.title}</h1>
+        <p className="text-sm text-zinc-600">{genre.description}</p>
+
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
           <button
             onClick={() => fetchOracle("free")}
             disabled={loading}
@@ -156,59 +171,129 @@ export default function GenreClient({ slug }: { slug: string }) {
             {err}
           </div>
         )}
+      </header>
 
-        {!raw ? (
-          <section className="rounded-3xl border border-black/5 bg-white/90 p-6 text-sm text-zinc-700 shadow-[0_8px_30px_rgba(0,0,0,0.06)] backdrop-blur">
-            「無料」または「Premium」を押すと結果が表示されます。
-          </section>
-        ) : (
-          <section className="space-y-4">
-            {sections.map((sec, idx) => {
-              const isHint =
-                sec.title.includes("行動のヒント") ||
-                sec.title.includes("ヒント") ||
-                sec.title.includes("アクション");
-
-              const hintItems = isHint ? splitHints(sec.body) : [];
-
-              return (
-                <div
-                  key={`${sec.title}-${idx}`}
-                  className="rounded-3xl border border-black/5 bg-white/90 p-6 shadow-[0_8px_30px_rgba(0,0,0,0.06)] backdrop-blur"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="inline-flex items-center rounded-full bg-zinc-900/5 px-3 py-1 text-xs font-semibold text-zinc-700">
-                      {sec.title}
-                    </div>
-                    <div className="text-[10px] text-zinc-400">{tier}</div>
-                  </div>
-
-                  {isHint ? (
-                    <ul className="mt-3 space-y-2 text-sm leading-6 text-zinc-900">
-                      {(hintItems.length ? hintItems : ["—"]).map((h, i) => (
-                        <li key={i} className="flex gap-3">
-                          <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-zinc-900/70" />
-                          <span>{h}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <div className="mt-3 whitespace-pre-wrap text-sm leading-7 text-zinc-900">
-                      {sec.body || "—"}
-                    </div>
-                  )}
+      {/* ===== タロットカード表示（3枚横並び + モーダル） ===== */}
+      {isTarot && cards && cards.length > 0 && (
+        <section className="mb-8">
+          <div className="grid grid-cols-3 gap-4">
+            {cards.map((c) => (
+              <button
+                key={`${c.index}-${c.slug ?? c.nameJa}`}
+                onClick={() => setZoom(c)}
+                className="flex flex-col items-center gap-2 rounded-2xl p-2 hover:bg-zinc-50"
+                type="button"
+              >
+                <img
+                  src={c.imageUrl}
+                  alt={c.nameJa}
+                  className={`w-full max-w-[170px] rounded-xl shadow-lg transition-transform ${
+                    c.reversed ? "rotate-180" : ""
+                  }`}
+                  loading="lazy"
+                />
+                <div className="text-xs text-zinc-700">
+                  <span className="font-semibold">{c.role}</span>
+                  <span className="text-zinc-500">（{c.position}）</span>
                 </div>
-              );
-            })}
-          </section>
-        )}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
-        <footer className="pt-6 text-center text-xs text-zinc-500">
-          <Link href="/tokusho" className="underline underline-offset-4">
-            特定商取引法に基づく表記
-          </Link>
-        </footer>
-      </div>
+      {/* ===== テキスト結果 ===== */}
+      {!raw ? (
+        <section className="rounded-3xl border border-zinc-200 bg-white p-6">
+          <div className="text-sm text-zinc-700">
+            「無料」または「Premium」を押すと結果が表示されます。
+          </div>
+        </section>
+      ) : (
+        <section className="space-y-4">
+          {sections.map((sec, idx) => {
+            const isHint =
+              sec.title.includes("行動のヒント") ||
+              sec.title.includes("ヒント") ||
+              sec.title.includes("アクション");
+            const hintItems = isHint ? splitHints(sec.body) : [];
+
+            return (
+              <div
+                key={`${sec.title}-${idx}`}
+                className="rounded-3xl border border-zinc-200 bg-white p-6"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-semibold text-zinc-600">
+                    {sec.title}
+                  </div>
+                  <div className="text-[10px] text-zinc-400">{tier}</div>
+                </div>
+
+                {isHint ? (
+                  <ul className="mt-3 space-y-2 text-sm leading-6 text-zinc-900">
+                    {(hintItems.length ? hintItems : ["—"]).map((h, i) => (
+                      <li key={i} className="flex gap-3">
+                        <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-zinc-900/70" />
+                        <span>{h}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="mt-3 whitespace-pre-wrap text-sm leading-7 text-zinc-900">
+                    {sec.body || "—"}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </section>
+      )}
+
+      {/* ===== モーダル ===== */}
+      {zoom && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6"
+          onClick={() => setZoom(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="relative w-full max-w-[520px]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setZoom(null)}
+              className="absolute -top-3 -right-3 rounded-full bg-white px-3 py-2 text-xs font-semibold shadow"
+              type="button"
+              aria-label="close"
+            >
+              ×
+            </button>
+
+            <img
+              src={zoom.imageUrl}
+              alt={zoom.nameJa}
+              className={`w-full rounded-2xl shadow-2xl ${
+                zoom.reversed ? "rotate-180" : ""
+              }`}
+            />
+
+            <div className="mt-3 text-center text-sm text-white">
+              <span className="font-semibold">{zoom.nameJa}</span>{" "}
+              <span className="opacity-80">
+                / {zoom.role}（{zoom.position}）
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <footer className="mt-10 text-xs text-zinc-500">
+        <Link href="/tokusho" className="underline underline-offset-4">
+          特定商取引法に基づく表記
+        </Link>
+      </footer>
     </main>
   );
 }
